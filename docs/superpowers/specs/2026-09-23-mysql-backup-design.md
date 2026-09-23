@@ -109,7 +109,7 @@ BACKUP_DIR=/var/lib/mysql-backup
 
 ### Remote integration test `tests/remote_integration.py`
 
-- Based on the existing `proxy-connect.py` + `mysql_inspect.py` paramiko pattern.
+- Based on a paramiko-over-HTTP-CONNECT-proxy connection pattern.
 - Credentials exclusively via `os.environ`: `SSH_KEY_FILE`, `KEY_PASS`, `SSH_USER`,
   `DEST_HOST`, `DEST_PORT`, `PROXY_HOST`, `PROXY_PORT`, `PROXY_USER`, `PROXY_PASS`,
   `MYSQL_USER`, `MYSQL_PASS`, `RCLONE_REMOTE` (optional override).

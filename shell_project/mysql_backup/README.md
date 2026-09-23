@@ -107,7 +107,3 @@ python tests/run_test.py /path/to/secrets/mysql_backup/.env
 测试流程：代理隧道 → SSH 认证 → 上传工程到远程 → 远程构建 RPM →
 `rpm -ivh` 安装 → 注入配置 → `mysql-backup-enable` 注册服务 →
 手动触发 `mysql-backup.service` → 校验 `rclone lsf` 远程存在 zip → 清理卸载。
-
-`tests/` 下的 `proxy-connect.py`、`local-ssh-forwarder.py`、`mysql_inspect.py`
-为配套的代理连接与 MySQL 探查参考脚本，同样完全由环境变量驱动，不含任何
-硬编码凭据或站点信息。
