@@ -31,6 +31,8 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+# Track our RPM spec (packaging/mysql-backup.spec) despite the *.spec rule above.
+!shell_project/mysql_backup/packaging/mysql-backup.spec
 
 # Installer logs
 pip-log.txt
