@@ -28,9 +28,18 @@ jobs:
 
       - name: Read version from spec
         id: ver
+        working-directory: ${{ github.workspace }}
         run: |
+          set -e
+          SPEC="shell_project/mysql_backup/packaging/mysql-backup.spec"
+          if [ ! -f "$SPEC" ]; then
+            echo "spec not found at $SPEC; repo root contents:" >&2
+            ls -la "$GITHUB_WORKSPACE" >&2 || true
+            find "$GITHUB_WORKSPACE" -name 'mysql-backup.spec' >&2 || true
+            exit 1
+          fi
           # Single source of truth: the Version: field in the spec.
-          VER="$(grep -E '^Version:' shell_project/mysql_backup/packaging/mysql-backup.spec | awk '{print $2}')"
+          VER="$(grep -E '^Version:' "$SPEC" | awk '{print $2}')"
           if [ -z "$VER" ]; then
             echo "could not read Version from spec" >&2
             exit 1
@@ -40,6 +49,7 @@ jobs:
       - name: Set up rpmbuild tree
         env:
           VER: ${{ steps.ver.outputs.version }}
+        working-directory: ${{ github.workspace }}
         run: |
           set -e
           # rpmdev-setuptree equivalent (avoids pulling in rpmdevtools + python3).
