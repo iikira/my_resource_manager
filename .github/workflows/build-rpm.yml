@@ -14,11 +14,14 @@ permissions:
 jobs:
   build-rpm:
     runs-on: ubuntu-latest
-    container: fedora:latest
+    container: fedora:41
     steps:
       - name: Install build tools
         run: |
-          dnf install -y rpm-build rpmdevtools tar gzip
+          # Install only the strict build toolchain. Skip weak deps and avoid the
+          # heavy rpmdevtools/python3 chain (its rpmdev-setuptree is just mkdir).
+          dnf install -y --nogpgcheck --setopt=install_weak_deps=False \
+            --setopt=fastestmirror=True rpm-build tar gzip
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +42,8 @@ jobs:
           VER: ${{ steps.ver.outputs.version }}
         run: |
           set -e
-          rpmdev-setuptree
+          # rpmdev-setuptree equivalent (avoids pulling in rpmdevtools + python3).
+          mkdir -p "$HOME/rpmbuild"/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
           # Stage the source tree as the tarball the spec's %setup unpacks.
           STAGE_DIR="/tmp/stage/mysql-backup-${VER}"
           mkdir -p "$STAGE_DIR"
