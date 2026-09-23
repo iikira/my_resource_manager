@@ -13,6 +13,11 @@ Requires:       /usr/bin/zip
 Requires:       /usr/bin/mysqldump
 Requires:       /usr/bin/mysql
 BuildArch:      noarch
+# Force gzip payload compression so the package installs on older rpm clients
+# (e.g. CentOS 7 / rpm 4.11) that don't support PayloadIsZstd. Built on Fedora
+# 41+ (rpm 6.x) which defaults to zstd.
+%define _binary_payload w9.gzdio
+%define _source_payload w9.gzdio
 
 %description
 mysql-backup dumps each MySQL database to its own .sql file, zips them into
