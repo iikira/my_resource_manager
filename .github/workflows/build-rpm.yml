@@ -1,0 +1,90 @@
+name: Build and Release RPM
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0). Defaults to v<spec-version>.'
+        required: false
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build tools
+        run: |
+          dnf install -y rpm-build rpmdevtools tar gzip
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from spec
+        id: ver
+        run: |
+          # Single source of truth: the Version: field in the spec.
+          VER="$(grep -E '^Version:' shell_project/mysql_backup/packaging/mysql-backup.spec | awk '{print $2}')"
+          if [ -z "$VER" ]; then
+            echo "could not read Version from spec" >&2
+            exit 1
+          fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Set up rpmbuild tree
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          set -e
+          rpmdev-setuptree
+          # Stage the source tree as the tarball the spec's %setup unpacks.
+          STAGE_DIR="/tmp/stage/mysql-backup-${VER}"
+          mkdir -p "$STAGE_DIR"
+          cp -r shell_project/mysql_backup/src "$STAGE_DIR/"
+          cp shell_project/mysql_backup/packaging/mysql-backup.spec "$STAGE_DIR/"
+          # Ship README/LICENSE so the spec's %doc/%license resolve.
+          cp README.md "$STAGE_DIR/" || true
+          [ -f LICENSE ] && cp LICENSE "$STAGE_DIR/" || true
+          cd /tmp/stage
+          tar czf "$HOME/rpmbuild/SOURCES/mysql-backup-${VER}.tar.gz" "mysql-backup-${VER}"
+          cp "$STAGE_DIR/mysql-backup.spec" "$HOME/rpmbuild/SPECS/"
+
+      - name: Build RPM
+        run: |
+          rpmbuild -bb "$HOME/rpmbuild/SPECS/mysql-backup.spec"
+
+      - name: Collect RPM artifact
+        run: |
+          mkdir -p artifacts
+          cp "$HOME"/rpmbuild/RPMS/noarch/*.rpm artifacts/ || \
+            cp "$HOME"/rpmbuild/RPMS/*/*.rpm artifacts/
+          ls -la artifacts/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mysql-backup-rpm
+          path: artifacts/*.rpm
+
+      - name: Determine tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v${VER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: mysql-backup ${{ steps.tag.outputs.tag }}
+          files: artifacts/*.rpm
+          generate_release_notes: true

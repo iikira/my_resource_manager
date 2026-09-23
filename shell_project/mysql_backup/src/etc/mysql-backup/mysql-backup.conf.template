@@ -1,0 +1,32 @@
+# mysql-backup configuration — shell key=value, sourced by mysql-backup.sh and
+# mysql-backup-enable. Keep this file mode 0600 and owned by root; it holds the
+# MySQL password. Copy /etc/mysql-backup/mysql-backup.conf.template here on first
+# install, then edit values.
+
+# Hour of day (0..23, 24h) when the systemd timer fires. Default 5 (05:00).
+BACKUP_HOUR=5
+
+# User the systemd service runs as. Must exist and have read access to this
+# config plus write access to BACKUP_DIR. Default opc.
+BACKUP_USER=opc
+
+# MySQL connection.
+MYSQL_HOST=localhost
+MYSQL_USER=root
+# Placeholder only — set a real password in this file (which is 0600, never
+# shipped with a real value). Do NOT commit real credentials.
+# Quote the value: it is sourced by bash, and passwords often contain
+# shell-special characters (< > & | $ ` # " ' space ...).
+MYSQL_PASS="password"
+
+# Schemas excluded from backup (space-separated).
+MYSQL_EXCLUDE="information_schema performance_schema sys mysql"
+
+# rclone destination (user must have configured this remote via `rclone config`).
+RCLONE_REMOTE=drive:MySQLBackup
+# Optional explicit rclone.conf path; empty => the run user's default
+# (~/.config/rclone/rclone.conf). Set this if BACKUP_USER has no home rclone conf.
+RCLONE_CONFIG=
+
+# Working / staging directory for dumps and the zip (cleaned after each run).
+BACKUP_DIR=/var/lib/mysql-backup

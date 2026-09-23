@@ -1,0 +1,121 @@
+#!/bin/bash
+#
+# mysql-backup-enable — read /etc/mysql-backup/mysql-backup.conf and generate the
+# systemd service + timer units for mysql-backup, then enable the timer.
+#
+# Usage:
+#   sudo mysql-backup-enable            # generate + enable + start timer
+#   sudo mysql-backup-enable --status   # show timer status / next run
+#   sudo mysql-backup-enable --disable  # disable + remove generated units
+#
+set -euo pipefail
+
+CONF_FILE="${MYSQL_BACKUP_CONF:-/etc/mysql-backup/mysql-backup.conf}"
+UNIT_DIR="/etc/systemd/system"
+SERVICE_NAME="mysql-backup.service"
+TIMER_NAME="mysql-backup.timer"
+SCRIPT_PATH="/usr/libexec/mysql-backup/mysql-backup.sh"
+
+if [ "$(id -u)" -ne 0 ]; then
+    echo "must run as root" >&2
+    exit 2
+fi
+
+if [ ! -r "$CONF_FILE" ]; then
+    echo "config not readable: $CONF_FILE" >&2
+    exit 2
+fi
+# shellcheck source=/dev/null
+. "$CONF_FILE"
+
+: "${BACKUP_HOUR:=5}"
+: "${BACKUP_USER:=opc}"
+: "${BACKUP_DIR:=/var/lib/mysql-backup}"
+
+# Validate hour is an integer in 0..23.
+case "$BACKUP_HOUR" in
+    ''|*[!0-9]*) echo "BACKUP_HOUR must be a number 0..23, got '$BACKUP_HOUR'" >&2; exit 2 ;;
+esac
+if [ "$BACKUP_HOUR" -lt 0 ] || [ "$BACKUP_HOUR" -gt 23 ]; then
+    echo "BACKUP_HOUR out of range 0..23: $BACKUP_HOUR" >&2
+    exit 2
+fi
+HOUR_FMT="$(printf '%02d' "$BACKUP_HOUR")"
+
+write_service() {
+    cat > "$UNIT_DIR/$SERVICE_NAME" <<EOF
+[Unit]
+Description=MySQL daily backup (dump each DB -> zip -> rclone)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=$BACKUP_USER
+ExecStart=$SCRIPT_PATH
+WorkingDirectory=$BACKUP_DIR
+Nice=10
+EOF
+}
+
+write_timer() {
+    cat > "$UNIT_DIR/$TIMER_NAME" <<EOF
+[Unit]
+Description=Run mysql-backup daily at $HOUR_FMT:00
+
+[Timer]
+OnCalendar=*-*-* $HOUR_FMT:00:00
+Persistent=true
+Unit=$SERVICE_NAME
+
+[Install]
+WantedBy=timers.target
+EOF
+}
+
+cmd_enable() {
+    echo "[enable] generating units from $CONF_FILE"
+    echo "[enable] BACKUP_HOUR=$BACKUP_HOUR BACKUP_USER=$BACKUP_USER"
+    mkdir -p "$BACKUP_DIR"
+    chown "$BACKUP_USER:$BACKUP_USER" "$BACKUP_DIR"
+
+    # The service runs as BACKUP_USER, but the live config (which holds the
+    # MySQL password) was seeded by %post as 0600 root-owned, so BACKUP_USER
+    # cannot read it. Reown it to BACKUP_USER so the service can source it;
+    # keep 0600 so only the owner can read the password.
+    if id -u "$BACKUP_USER" >/dev/null 2>&1; then
+        chown "$BACKUP_USER" "$CONF_FILE" 2>/dev/null || true
+        chmod 0600 "$CONF_FILE" 2>/dev/null || true
+    fi
+
+    write_service
+    write_timer
+
+    systemctl daemon-reload
+    systemctl enable --now "$TIMER_NAME"
+    echo "[enable] timer enabled. Next runs:"
+    systemctl list-timers "$TIMER_NAME" --no-pager || true
+}
+
+cmd_disable() {
+    systemctl disable --now "$TIMER_NAME" 2>/dev/null || true
+    rm -f "$UNIT_DIR/$SERVICE_NAME" "$UNIT_DIR/$TIMER_NAME"
+    systemctl daemon-reload
+    echo "[disable] removed $SERVICE_NAME and $TIMER_NAME"
+}
+
+cmd_status() {
+    systemctl status "$TIMER_NAME" --no-pager || true
+    echo "---"
+    systemctl list-timers "$TIMER_NAME" --no-pager || true
+}
+
+case "${1:-enable}" in
+    enable|"")    cmd_enable ;;
+    --status)     cmd_status ;;
+    --disable)    cmd_disable ;;
+    -h|--help)
+        sed -n '2,11p' "$0"
+        ;;
+    *) echo "unknown subcommand: $1" >&2; exit 2 ;;
+esac
